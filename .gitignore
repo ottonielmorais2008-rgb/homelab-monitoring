@@ -1,0 +1,5 @@
+# Local secrets and machine-specific overrides. Copy .env.example to .env.
+.env
+
+# Archives written by scripts/backup.sh
+backups/

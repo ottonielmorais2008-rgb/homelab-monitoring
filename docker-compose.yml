@@ -1,0 +1,38 @@
+# Homelab uptime monitor.
+# Image, restart policy, published port, and /app/data path follow the
+# upstream Compose file:
+# https://github.com/louislam/uptime-kuma/blob/master/compose.yaml
+
+name: homelab-monitoring
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    restart: unless-stopped
+    ports:
+      - "${UPTIME_KUMA_PORT:-3001}:3001"
+    environment:
+      TZ: ${TZ:-Europe/Lisbon}
+    volumes:
+      - uptime-kuma-data:/app/data
+    # Monitors can reach a service published on the Docker host at
+    # host.docker.internal. Ports bound only to 127.0.0.1 stay unreachable.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Matches the image HEALTHCHECK. extra/healthcheck is shipped in the
+    # image; the long start period covers a cold Node.js boot.
+    healthcheck:
+      test: ["CMD", "extra/healthcheck"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 180s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  uptime-kuma-data:
+    name: homelab-monitoring-data

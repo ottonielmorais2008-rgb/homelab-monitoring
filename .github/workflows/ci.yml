@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Compose and lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose
+        run: docker compose --file docker-compose.yml config --quiet
+
+      - name: Lint YAML
+        run: |
+          python3 -m pip install --disable-pip-version-check "yamllint==1.35.1"
+          python3 -m yamllint .
+
+      - name: Lint Markdown
+        run: npx --yes markdownlint-cli2@0.17.2 "**/*.md"
