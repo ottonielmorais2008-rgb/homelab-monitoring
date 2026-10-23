@@ -172,6 +172,18 @@ Archives stay on the machine. `backups/` is listed in `.gitignore`.
 
 `docs/screenshots/telegram-alert.png` — live capture of a Telegram chat with the Homelab Monitor bot notification.
 
+## What went wrong
+
+A few gaps showed up between the files in the repo and what a first run actually needs.
+
+- **Docker on the host.** The stack starts with Docker Engine and the Compose v2 plugin (`docker compose up -d`), which publishes Uptime Kuma on port 3001. A host without that engine cannot run the monitors locally until Docker is available. CI in `.github/workflows/ci.yml` validates `docker compose config` and lints YAML and Markdown; it leaves the local run dependent on that engine. The constraint is the host environment.
+
+- **Dashboard caption.** `docs/screenshots/dashboard.png` was replaced with a live Uptime Kuma capture of the HTTP, ping, and TCP monitors up, and `docs/screenshots/README.md` was updated in the same change. The root README still introduced the images as placeholders. A later edit set the dashboard line to "live capture of the dashboard with the HTTP, ping, and TCP monitors up." The PNG was replaced once more after the Telegram notification was enabled on those monitors; the caption already matched.
+
+- **Telegram caption.** `docs/screenshots/telegram-alert.png` was then replaced with a Homelab Monitor bot notification. `docs/screenshots/README.md` describes that file as the bot's test notification. The root README still said the image was "still a placeholder" and asked for a down alert and the matching recovery. The following commit set the caption to "live capture of a Telegram chat with the Homelab Monitor bot notification."
+
+- **Alert path.** Messages stay off until a bot exists. In [@BotFather](https://t.me/BotFather), `/newbot` requires a username that ends in `bot`. The token is pasted into **Settings → Notifications → Telegram** in Uptime Kuma, and the chat id is filled only after the bot has received a message. `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env` are the local copy of those values. The Compose service does not receive them, so filling in `.env` alone does not enable alerts.
+
 ## Skills shown
 
 - **Docker.** Compose service on the published `louislam/uptime-kuma:2` image, a named volume, a restart policy, a healthcheck, and a volume backup script.
