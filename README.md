@@ -162,15 +162,15 @@ Archives stay on the machine. `backups/` is listed in `.gitignore`.
 
 ## Screenshots
 
-The images below are placeholders. Replace the PNG files and keep the paths. `docs/screenshots/README.md` lists what each capture should show.
+`docs/screenshots/README.md` lists what each capture should show.
 
-![Placeholder for the Uptime Kuma dashboard](docs/screenshots/dashboard.png)
+![Uptime Kuma dashboard with Website, Router, and Service port monitors up](docs/screenshots/dashboard.png)
 
-`docs/screenshots/dashboard.png` — dashboard with the HTTP, ping, and TCP monitors up.
+`docs/screenshots/dashboard.png` — live capture of the dashboard with the HTTP, ping, and TCP monitors up.
 
 ![Placeholder for a Telegram alert](docs/screenshots/telegram-alert.png)
 
-`docs/screenshots/telegram-alert.png` — Telegram chat with a down alert and the matching recovery.
+`docs/screenshots/telegram-alert.png` — still a placeholder. Replace it with a Telegram chat showing a down alert and the matching recovery once the bot is configured.
 
 ## Skills shown
 
