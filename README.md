@@ -168,9 +168,9 @@ Archives stay on the machine. `backups/` is listed in `.gitignore`.
 
 `docs/screenshots/dashboard.png` — live capture of the dashboard with the HTTP, ping, and TCP monitors up.
 
-![Telegram alert](docs/screenshots/telegram-alert.png)
+![Telegram alert from Homelab Monitor bot](docs/screenshots/telegram-alert.png)
 
-`docs/screenshots/telegram-alert.png` — still a placeholder. Replace it with a Telegram chat showing a down alert and the matching recovery once the bot is configured.
+`docs/screenshots/telegram-alert.png` — live capture of a Telegram chat with the Homelab Monitor bot notification.
 
 ## Skills shown
 
