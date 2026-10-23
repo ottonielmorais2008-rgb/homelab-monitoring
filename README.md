@@ -168,7 +168,7 @@ Archives stay on the machine. `backups/` is listed in `.gitignore`.
 
 `docs/screenshots/dashboard.png` — live capture of the dashboard with the HTTP, ping, and TCP monitors up.
 
-![Placeholder for a Telegram alert](docs/screenshots/telegram-alert.png)
+![Telegram alert](docs/screenshots/telegram-alert.png)
 
 `docs/screenshots/telegram-alert.png` — still a placeholder. Replace it with a Telegram chat showing a down alert and the matching recovery once the bot is configured.
 
