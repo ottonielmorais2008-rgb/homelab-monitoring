@@ -15,8 +15,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate Docker Compose
+      - name: Validate Docker Compose (production)
         run: docker compose --file docker-compose.yml config --quiet
+
+      - name: Validate Docker Compose (CI stack)
+        run: docker compose --file docker-compose.ci.yml config --quiet
 
       - name: Lint YAML
         run: |
@@ -25,3 +28,65 @@ jobs:
 
       - name: Lint Markdown
         run: npx --yes markdownlint-cli2@0.17.2 "**/*.md"
+
+  nginx-proxy:
+    name: Nginx proxy checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Nginx config (nginx -t)
+        run: |
+          docker run --rm \
+            --add-host=uptime-kuma:127.0.0.1 \
+            -v "$PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/nginx/conf.d:/etc/nginx/conf.d:ro" \
+            -v "$PWD/nginx/htpasswd:/etc/nginx/htpasswd:ro" \
+            nginx:1.27-alpine nginx -t
+
+      - name: Start CI stack
+        run: docker compose --file docker-compose.ci.yml up -d --wait
+
+      - name: Health endpoint (200, no auth)
+        run: |
+          code=$(curl -s -o /tmp/health.out -w "%{http_code}" http://127.0.0.1:8080/health)
+          test "$code" = "200"
+          grep -qx "ok" /tmp/health.out
+
+      - name: Dashboard without credentials (401)
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/)
+          test "$code" = "401"
+
+      - name: Dashboard with credentials (200 + security headers)
+        run: |
+          curl -s -D /tmp/headers.out -o /tmp/body.out \
+            -u monitor:changeme http://127.0.0.1:8080/
+          code=$(awk 'NR==1 {print $2}' /tmp/headers.out)
+          test "$code" = "200"
+          grep -qi "upstream-ok" /tmp/body.out
+          grep -qi "^x-frame-options: *DENY" /tmp/headers.out
+          grep -qi "^x-content-type-options: *nosniff" /tmp/headers.out
+          grep -qi "^referrer-policy: *no-referrer" /tmp/headers.out
+
+      - name: Rate limit returns 429
+        run: |
+          # Fire above the 2 r/s + burst=4 budget; at least one must be 429.
+          hit_429=0
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -u monitor:changeme http://127.0.0.1:8080/)
+            if [ "$code" = "429" ]; then
+              hit_429=1
+              break
+            fi
+          done
+          test "$hit_429" = "1"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose --file docker-compose.ci.yml logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose --file docker-compose.ci.yml down -v

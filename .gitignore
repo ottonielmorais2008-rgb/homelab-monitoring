@@ -3,3 +3,5 @@
 
 # Archives written by scripts/backup.sh
 backups/
+nginx/tls/*.pem
+nginx/conf.d/ssl.conf
