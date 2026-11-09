@@ -1,0 +1,36 @@
+# Standalone stack for CI. A tiny upstream stands in for Uptime Kuma so the
+# runner can check Nginx routes, security headers, rate limits, and basic auth.
+
+name: homelab-monitoring-ci
+
+services:
+  uptime-kuma:
+    image: nginx:1.27-alpine
+    expose:
+      - "3001"
+    volumes:
+      - ./nginx/ci-upstream.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 3s
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      uptime-kuma:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 3s

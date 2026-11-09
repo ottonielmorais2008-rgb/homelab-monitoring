@@ -1,35 +1,42 @@
 # Homelab monitoring
 
 [![CI](https://github.com/ottonielmorais2008-rgb/homelab-monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/ottonielmorais2008-rgb/homelab-monitoring/actions/workflows/ci.yml)
+[![Pages](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://ottonielmorais2008-rgb.github.io/homelab-monitoring/)
 
 Self-hosted uptime monitoring for a home lab or small network. [Uptime Kuma](https://github.com/louislam/uptime-kuma) runs in Docker and checks a website, the router, and a TCP port. When a check fails, and when it recovers, a Telegram message arrives.
 
+An **Nginx reverse proxy** sits in front of the dashboard: basic auth, rate limiting, security headers, gzip, and a `/health` endpoint. Uptime Kuma stays on the Compose network only; Nginx is the published front door.
+
 This repository is a deployment you can clone and run. It is separate from the Uptime Kuma application, which stays in its own project and is pulled as the published image `louislam/uptime-kuma:2`.
+
+**Docs:** [Nginx reverse proxy guide on GitHub Pages](https://ottonielmorais2008-rgb.github.io/homelab-monitoring/)
 
 ## Why
 
-A small network fails in ordinary ways: the WAN link drops, the router stops answering, a service closes its port. A dashboard on the LAN shows the current state, and Telegram carries the same event to a phone so the outage is visible away from the desk.
+A small network fails in ordinary ways: the WAN link drops, the router stops answering, a service closes its port. A dashboard on the LAN shows the current state, and Telegram carries the same event to a phone so the outage is visible away from the desk. Putting Nginx in front keeps the UI from sitting open on a raw host port.
 
 ## Network
 
 ```mermaid
 flowchart LR
+  client["Browser / LAN"]
+  nginx["Nginx<br/>port 8080"]
+  kuma["Uptime Kuma<br/>internal :3001"]
   router["Router / gateway"]
-  host["PC or server<br/>Docker"]
-  kuma["Uptime Kuma<br/>port 3001"]
   http["Website<br/>HTTP monitor"]
   tcp["LAN service<br/>TCP monitor"]
   telegram["Telegram"]
 
-  router --- host
-  host --- kuma
+  client -->|"basic auth"| nginx
+  nginx -->|"/health"| nginx
+  nginx -->|"/"| kuma
   kuma -->|"Ping"| router
   kuma -->|"HTTP"| http
   kuma -->|"TCP"| tcp
   kuma -->|"Down and up alerts"| telegram
 ```
 
-The Docker host publishes the dashboard on port 3001. Uptime Kuma reaches targets from the container network: ICMP to the gateway, HTTP to a site, and a TCP handshake to a chosen port. Alerts leave the LAN through Telegram's Bot API (`api.telegram.org`).
+Nginx publishes the dashboard on port 8080 (configurable). Uptime Kuma is only reachable on the Compose network. Monitors still run from the Kuma container: ICMP to the gateway, HTTP to a site, and a TCP handshake to a chosen port. Alerts leave the LAN through Telegram's Bot API (`api.telegram.org`).
 
 ## Monitors to set up
 
@@ -60,29 +67,56 @@ cp .env.example .env
 docker compose up -d
 ```
 
-`.env` is optional for the first start. The Compose file defaults to port `3001` and timezone `Europe/Lisbon`. Edit `.env` when you want a different host port or timezone, then run `docker compose up -d` again.
+`.env` is optional for the first start. Defaults are Nginx on host port `8080` and timezone `Europe/Lisbon`. Edit `.env` when you want a different front-door port or timezone, then run `docker compose up -d` again.
 
-Open `http://localhost:3001` on the Docker host, or `http://<host-ip>:3001` from another device on the LAN. On the first visit, create the admin account before anyone else who can reach that port does. Uptime Kuma has no login until that account exists.
+### Run locally
 
-Check the container:
+On the Docker host only:
+
+- Health (no password): `http://localhost:8080/health`
+- Dashboard: `http://localhost:8080` — demo user `monitor`, password `changeme`
+- From another LAN device: `http://<host-ip>:8080`
+
+Change the demo password in `nginx/htpasswd` before exposing the stack beyond a lab network. On the first visit to the dashboard, create the Uptime Kuma admin account. Nginx basic auth is an extra gate in front of that UI.
+
+Check the containers:
 
 ```bash
 docker compose ps
+curl -s http://localhost:8080/health
 ```
 
-The status becomes `healthy` after the app finishes booting. The healthcheck allows up to three minutes on a cold start, matching the check built into the image (`extra/healthcheck`).
+Nginx becomes `healthy` when `/health` returns `ok`. Uptime Kuma becomes `healthy` after the app finishes booting (the image healthcheck allows up to three minutes on a cold start).
 
 Monitor configuration and history are stored in the named volume `homelab-monitoring-data`, mounted at `/app/data`. The upstream project documents that NFS is an unsupported filesystem for this directory; a local Docker volume is the right place for it.
 
 Day to day:
 
 ```bash
-docker compose logs -f uptime-kuma
+docker compose logs -f nginx uptime-kuma
 docker compose pull && docker compose up -d
 docker compose down
 ```
 
 `docker compose down` stops the stack and keeps the volume. Deleting that volume deletes monitor history.
+
+### Optional local TLS
+
+```bash
+./scripts/generate-nginx-tls.sh
+# copy nginx/conf.d/ssl.conf.example -> nginx/conf.d/ssl.conf and edit as needed
+docker compose up -d nginx
+```
+
+## Nginx front door
+
+| Path | Auth | Rate limit | Backend |
+| --- | --- | --- | --- |
+| `/health` | no | no | Nginx (`200 ok`) |
+| `/` | basic | 2 r/s, burst 4 | `uptime-kuma:3001` |
+
+Details, security headers, and CI notes:
+[Pages guide](https://ottonielmorais2008-rgb.github.io/homelab-monitoring/) and [`nginx/README.md`](nginx/README.md).
 
 ## Telegram setup
 
@@ -176,7 +210,15 @@ Archives stay on the machine. `backups/` is listed in `.gitignore`.
 
 A few gaps showed up between the files in the repo and what a first run actually needs.
 
-- **Docker on the host.** The stack starts with Docker Engine and the Compose v2 plugin (`docker compose up -d`), which publishes Uptime Kuma on port 3001. A host without that engine cannot run the monitors locally until Docker is available. CI in `.github/workflows/ci.yml` validates `docker compose config` and lints YAML and Markdown; it leaves the local run dependent on that engine. The constraint is the host environment.
+- **Docker on the host.** The stack starts with Docker Engine and the Compose v2 plugin (`docker compose up -d`). A host without that engine cannot run the monitors locally until Docker is available. CI validates Compose, lints YAML and Markdown, runs `nginx -t`, and brings up a CI-only stand-in stack; it leaves the local run dependent on that engine.
+
+- **Open dashboard port.** Publishing Uptime Kuma on host port 3001 meant anyone on the LAN could reach the UI before the first admin account existed. The Nginx front door removes that host bind and adds basic auth and rate limiting. Keeping both 3001 and 8080 would have left an unauthenticated bypass.
+
+- **WebSockets through the proxy.** Without `Upgrade` and `Connection` headers, `/health` looked fine while the dashboard stayed blank. Those headers are set on the proxied location.
+
+- **CI vs the real image.** Pulling `louislam/uptime-kuma:2` on every PR is slow and the cold-start healthcheck is long. `docker-compose.ci.yml` uses a tiny upstream on port 3001 so route, header, 401, and 429 checks stay fast.
+
+- **htpasswd comments.** Nginx treats every line in the password file as a user entry. Comments belong in `nginx/README.md`, not in `nginx/htpasswd`.
 
 - **Dashboard caption.** `docs/screenshots/dashboard.png` was replaced with a live Uptime Kuma capture of the HTTP, ping, and TCP monitors up, and `docs/screenshots/README.md` was updated in the same change. The root README still introduced the images as placeholders. A later edit set the dashboard line to "live capture of the dashboard with the HTTP, ping, and TCP monitors up." The PNG was replaced once more after the Telegram notification was enabled on those monitors; the caption already matched.
 
@@ -186,11 +228,12 @@ A few gaps showed up between the files in the repo and what a first run actually
 
 ## Skills shown
 
-- **Docker.** Compose service on the published `louislam/uptime-kuma:2` image, a named volume, a restart policy, a healthcheck, and a volume backup script.
-- **Networking.** LAN gateway discovery, HTTP and TCP checks from a container, Docker DNS on the Compose network, and a published dashboard port.
+- **Docker.** Compose services for Uptime Kuma and Nginx, a named volume, restart policies, healthchecks, and a volume backup script.
+- **Nginx.** Reverse proxy, basic auth, rate limiting, security headers, gzip, health endpoint, optional self-signed TLS.
+- **Networking.** LAN gateway discovery, HTTP and TCP checks from a container, Docker DNS on the Compose network, and a single published front-door port.
 - **Monitoring.** Three monitor types (HTTP, ICMP ping, TCP) with intervals and retries chosen so a single blip does not alert.
 - **Alerting.** A Telegram bot, a chat id, a dashboard notification, and an end-to-end test that stops a service and waits for the message.
-- **CI.** GitHub Actions runs `docker compose config` and lints YAML and Markdown on every push and pull request.
+- **CI.** GitHub Actions validates Compose, lints YAML and Markdown, runs `nginx -t`, and exercises routes, headers, 401, and 429 against a CI stand-in stack.
 
 ## License
 
